@@ -35,7 +35,10 @@ class RedisConnection(SingletonMixin):
 
     def waitfor(self):
         self.reconnect()
-        return self.redis.brpop(self.configure.watch_key)
+        resp = self.redis.brpop(self.configure.watch_key, timeout=10)
+        if resp:
+            return resp
+        return None, None
 
     def push_queue(self, value):
         self.reconnect()

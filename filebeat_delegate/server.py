@@ -5,38 +5,44 @@ __author__ = 'Alexander.Li'
 import multiprocessing
 import logging
 import json
+import signal
+import sys
 from utilities import SingletonMixin, RedisConnection
 from parser import FilebeatParser, Configure
 from publisher import SNSPublisher, MailgunPublisher
 from errorbuster import formatError
 
 
-def worker_proccess(queue, _number, config):
-    logging.info('worker:%s is ready', _number)
-    try:
-        configure = Configure.instance().restore(config)
-        if configure.publisher == 'sns':
-            logging.info('setup sns publisher')
-            publisher = SNSPublisher.instance()
-        else:
-            logging.info('setup mailgun publisher')
-            publisher = MailgunPublisher.instance()
-        publisher.init_publisher(configure)
-        while True:
-            try:
-                data = queue.get()
-                filebeatparser = FilebeatParser(data)
-                message = "\n".join([
-                    "HOST NAME: %s" % filebeatparser.host,
-                    "TIMESTAMP: %s" % filebeatparser.timestamp,
-                    "MESSAGE:\n%s" % json.dumps(filebeatparser.message, indent=4)
-                ])
-                publisher.sendMessage(message)
-            except Exception as ex:
-                logging.error(formatError(ex))
+def signal_handler(signal, frame):
+    sys.exit(0)
 
-    except KeyboardInterrupt:
-        pass
+
+def worker_proccess(pid,  config):
+    signal.signal(signal.SIGTERM, signal_handler)
+
+    configure = Configure.instance().restore(config)
+    if configure.publisher == 'sns':
+        logging.info('PID:%s setup sns publisher', pid)
+        publisher = SNSPublisher.instance()
+    else:
+        logging.info('PID:%s setup mailgun publisher', pid)
+        publisher = MailgunPublisher.instance()
+    publisher.init_publisher(configure)
+    RedisConnection.instance().initConnection(configure)
+    while True:
+        queue_name, message = RedisConnection.instance().waitfor()
+        if queue_name != configure.watch_key:
+            continue
+        try:
+            filebeatparser = FilebeatParser(message)
+            message = "\n".join([
+                "HOST NAME: %s" % filebeatparser.host,
+                "TIMESTAMP: %s" % filebeatparser.timestamp,
+                "MESSAGE:\n%s" % json.dumps(filebeatparser.message, indent=4)
+            ])
+            publisher.sendMessage(message)
+        except Exception as ex:
+            logging.error(formatError(ex))
 
 
 class Server(SingletonMixin):
@@ -47,14 +53,25 @@ class Server(SingletonMixin):
         )
         RedisConnection.instance().initConnection(configure)
         try:
-            queue = multiprocessing.Manager().Queue()
-            pool = multiprocessing.Pool(processes=configure.workers)
-            for i in range(configure.workers):
-                pool.apply_async(worker_proccess, args=(queue, i, configure.config))
-            pool.close()
-            while True:
-                qn, data = RedisConnection.instance().waitfor()
-                if qn == configure.watch_key:
-                    queue.put(data)
+            procs = []
+            for pid in xrange(configure.workers):
+                proc = multiprocessing.Process(target=worker_proccess, args=(pid, configure.config, ))
+                procs.append(proc)
+                proc.start()
+
+            def on_term(signal, frame):
+                for proc in procs:
+                    proc.terminate()
+                sys.exit(0)
+
+            signal.signal(signal.SIGTERM, on_term)
+            for proc in procs:
+                proc.join()
+        except Exception as e:
+            logging.error(formatError(e))
+            for proc in procs:
+                proc.terminate()
+
         except KeyboardInterrupt:
-            pass
+            for proc in procs:
+                proc.terminate()
