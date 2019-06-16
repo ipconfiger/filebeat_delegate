@@ -2,6 +2,7 @@
 
 __author__ = 'Alexander.Li'
 
+import logging
 import yaml
 import json
 from utilities import SingletonMixin
@@ -29,6 +30,10 @@ class Configure(SingletonMixin):
         self.file = ''
         self.config = None
 
+    def restore(self, config_dict):
+        self.config = config_dict
+        return self
+
     def parse(self, filepath):
         with open(filepath, 'r') as f:
             self.file = f.read()
@@ -46,22 +51,46 @@ class Configure(SingletonMixin):
             assert 'watch_key' in self.config, 'watch_key missed'
         except AssertionError as e:
             assertions.append(e.message)
+
         try:
-            assert 'aws_key' in self.config, 'aws_key missed'
+            assert 'publisher' in self.config, 'publisher missed'
         except AssertionError as e:
             assertions.append(e.message)
+
         try:
-            assert 'aws_secret' in self.config, 'aws_secret missed'
+            assert self.config['publisher'] in ['sns', 'mailgun'], 'publisher only allowed sns or mailgun'
         except AssertionError as e:
             assertions.append(e.message)
-        try:
-            assert 'aws_region' in self.config, 'aws_region missed'
-        except AssertionError as e:
-            assertions.append(e.message)
-        try:
-            assert 'aws_topic_arn' in self.config, 'aws_topic_arn missed'
-        except AssertionError as e:
-            assertions.append(e.message)
+
+        if self.config['publisher'] == 'sns':
+
+            try:
+                assert 'aws_key' in self.config, 'aws_key missed'
+            except AssertionError as e:
+                assertions.append(e.message)
+            try:
+                assert 'aws_secret' in self.config, 'aws_secret missed'
+            except AssertionError as e:
+                assertions.append(e.message)
+            try:
+                assert 'aws_region' in self.config, 'aws_region missed'
+            except AssertionError as e:
+                assertions.append(e.message)
+            try:
+                assert 'aws_topic_arn' in self.config, 'aws_topic_arn missed'
+            except AssertionError as e:
+                assertions.append(e.message)
+
+        else:
+            try:
+                assert 'mg_domain' in self.config, 'mg_domain missed'
+            except AssertionError as e:
+                assertions.append(e.message)
+            try:
+                assert 'mg_key' in self.config, 'mg_key missed'
+            except AssertionError as e:
+                assertions.append(e.message)
+
         try:
             assert 'workers' in self.config, 'workers missed'
         except AssertionError as e:
@@ -81,6 +110,22 @@ class Configure(SingletonMixin):
     @property
     def watch_key(self):
         return self.config.get('watch_key')
+
+    @property
+    def publisher(self):
+        return self.config.get('publisher')
+
+    @property
+    def mg_domain(self):
+        return self.config.get('mg_domain')
+
+    @property
+    def mg_target(self):
+        return self.config.get('mg_target')
+
+    @property
+    def mg_key(self):
+        return self.config.get('mg_key')
 
     @property
     def aws_key(self):
@@ -126,33 +171,62 @@ class Configure(SingletonMixin):
             else:
                 lines.append('watch_key: %s\n' % watch_key)
 
-            lines.append('# aws_key configured the aws key for send message to SNS\n')
-            aws_key = raw_input('aws_key (default: ):')
-            if not aws_key:
-                lines.append('aws_key: \'\'\n')
-            else:
-                lines.append('aws_key: %s\n' % aws_key)
+            while True:
+                publisher = raw_input('publisher (sns or mailgun)')
+                if publisher and publisher in ['sns', 'mailgun']:
+                    lines.append('# publisher configured witch way to send logs\n')
+                    lines.append('publisher: %s\n' % publisher)
+                    break
 
-            lines.append('# aws_secret configured the aws secret for send message to SNS\n')
-            aws_secret = raw_input('aws_secret (default: ):')
-            if not aws_secret:
-                lines.append('aws_secret: \'\'\n')
-            else:
-                lines.append('aws_secret: %s\n' % aws_secret)
+            if publisher == 'sns':
+                lines.append('# aws_key configured the aws key for send message to SNS\n')
+                aws_key = raw_input('aws_key (default: ):')
+                if not aws_key:
+                    lines.append('aws_key: \'\'\n')
+                else:
+                    lines.append('aws_key: %s\n' % aws_key)
 
-            lines.append('# aws_region configured the region for aws service\n')
-            aws_region = raw_input('aws_region (default: ):')
-            if not aws_region:
-                lines.append('aws_region: \'\'\n')
-            else:
-                lines.append('aws_region: %s\n' % aws_region)
+                lines.append('# aws_secret configured the aws secret for send message to SNS\n')
+                aws_secret = raw_input('aws_secret (default: ):')
+                if not aws_secret:
+                    lines.append('aws_secret: \'\'\n')
+                else:
+                    lines.append('aws_secret: %s\n' % aws_secret)
 
-            lines.append('# aws_topic_arn configured the SNS topic arn for send message to SNS\n')
-            aws_topic_arn = raw_input('aws_topic_arn (default: ):')
-            if not aws_topic_arn:
-                lines.append('aws_topic_arn: \'\'\n')
+                lines.append('# aws_region configured the region for aws service\n')
+                aws_region = raw_input('aws_region (default: ):')
+                if not aws_region:
+                    lines.append('aws_region: \'\'\n')
+                else:
+                    lines.append('aws_region: %s\n' % aws_region)
+
+                lines.append('# aws_topic_arn configured the SNS topic arn for send message to SNS\n')
+                aws_topic_arn = raw_input('aws_topic_arn (default: ):')
+                if not aws_topic_arn:
+                    lines.append('aws_topic_arn: \'\'\n')
+                else:
+                    lines.append('aws_topic_arn: %s\n' % aws_topic_arn)
             else:
-                lines.append('aws_topic_arn: %s\n' % aws_topic_arn)
+                lines.append('# mg_domain configured the domain of mailgun\n')
+                mg_domain = raw_input('mg_domain (default: ):')
+                if not mg_domain:
+                    lines.append('mg_domain: \'\'\n')
+                else:
+                    lines.append('mg_domain: %s\n' % mg_domain)
+
+                lines.append('# mg_key configured the mailgaun api key\n')
+                mg_key = raw_input('mg_key (default: ):')
+                if not mg_key:
+                    lines.append('mg_key: \'\'\n')
+                else:
+                    lines.append('mg_key: %s\n' % mg_key)
+
+                lines.append('# mg_target configured target email address to recieve log\n')
+                mg_target = raw_input('mg_target (default: ):')
+                if not mg_target:
+                    lines.append('mg_target: \'\'\n')
+                else:
+                    lines.append('mg_target: %s\n' % mg_target)
 
             lines.append('# workers configured the worker number\n')
             workers = raw_input('workers (default: 1):')

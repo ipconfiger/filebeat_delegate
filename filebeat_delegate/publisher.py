@@ -5,8 +5,28 @@ __author__ = 'Alexander.Li'
 import json
 import boto3
 import logging
+import requests
 from utilities import SingletonMixin
 from errorbuster import formatError
+
+
+class MailgunPublisher(SingletonMixin):
+    def __init__(self):
+        self.url = None
+        self.key = None
+        self.configure = None
+
+    def init_publisher(self, configure):
+        self.url = "https://api.mailgun.net/v3/{0.mg_domain}/messages".format(configure)
+        self.key = configure.mg_key
+        self.configure = configure
+
+    def sendMessage(self, message):
+        r = requests.post(self.url, auth=("api", self.key), data={"from": " <mailgun@{0.mg_domain}>".format(self.configure),
+              "to": [self.configure.mg_target, "YOU@YOUR_DOMAIN_NAME"],
+              "subject": "error report",
+              "text": message})
+        logging.info(r.text)
 
 
 class SNSPublisher(SingletonMixin):
@@ -14,13 +34,13 @@ class SNSPublisher(SingletonMixin):
         self.sns = None
         self.topic = None
 
-    def initPublisher(self, aws_key, aws_secret, aws_region, aws_topic):
+    def init_publisher(self, configure):
         self.sns = boto3.resource(
             'sns',
-            region_name=aws_region,
-            aws_access_key_id=aws_key,
-            aws_secret_access_key=aws_secret)
-        self.topic = self.sns.Topic(aws_topic)
+            region_name=configure.aws_region,
+            aws_access_key_id=configure.aws_key,
+            aws_secret_access_key=configure.aws_secret)
+        self.topic = self.sns.Topic(configure.aws_topic)
 
     def sendMessage(self, message):
         payloads = json.dumps({
