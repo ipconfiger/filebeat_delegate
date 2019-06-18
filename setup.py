@@ -1,7 +1,7 @@
 from setuptools import setup, find_packages
 import sys, os
 
-version = '0.1.9'
+version = '0.2.0'
 
 setup(name='filebeat_delegate',
       version=version,
@@ -24,7 +24,8 @@ Watch redis queue from filebeat and delegate data to AWS SNS""",
           'redis',
           'PyYAML',
           'errorbuster',
-          'requests'
+          'requests',
+          'pollworker'
       ],
       entry_points={
         'console_scripts': ['fds=filebeat_delegate:main'],

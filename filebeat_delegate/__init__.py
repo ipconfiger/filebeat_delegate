@@ -38,7 +38,7 @@ def watch(config):
     try:
         Configure.instance().parse(config)
         click.echo('Watcher is starting...')
-        Server.instance().start(Configure.instance())
+        Server().start(Configure.instance())
     except IOError as e:
         click.echo(e.message)
 

@@ -4,6 +4,7 @@ __author__ = 'Alexander.Li'
 
 import redis
 import threading
+import logging
 
 class SingletonMixin(object):
     __singleton_lock = threading.Lock()
@@ -35,10 +36,12 @@ class RedisConnection(SingletonMixin):
 
     def waitfor(self):
         self.reconnect()
-        resp = self.redis.brpop(self.configure.watch_key, timeout=10)
+        logging.info('redis watch key: %s', self.configure.watch_key)
+        resp = self.redis.brpop(self.configure.watch_key, timeout=60)
+        logging.info('redis returned:%s', resp)
         if resp:
-            return resp
-        return None, None
+            _, message = resp
+            return message
 
     def push_queue(self, value):
         self.reconnect()
